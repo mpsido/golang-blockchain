@@ -237,10 +237,8 @@ func writeData(rw *bufio.ReadWriter) {
 			}
 			mutex.Unlock()
 
-			mutex.Lock()
 			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
 			rw.Flush()
-			mutex.Unlock()
 
 		}
 	}()
@@ -273,10 +271,8 @@ func writeData(rw *bufio.ReadWriter) {
 			log.Println(err)
 		}
 
-		mutex.Lock()
 		rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
 		rw.Flush()
-		mutex.Unlock()
 	}
 
 }
