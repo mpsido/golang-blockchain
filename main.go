@@ -51,6 +51,7 @@ var Blockchain []Block
 
 var mutex = &sync.Mutex{}
 var blockchainChannel = make(chan []Block)
+var blockchainUpdate = make(chan int)
 
 
 // web server
@@ -227,6 +228,7 @@ func pollBlockchainChannel() {
 				// Reset console color: 	\x1b[0m
 				fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
 
+				blockchainUpdate <- 1
 				spew.Dump(Blockchain)
 			}
 			mutex.Unlock()
@@ -237,16 +239,18 @@ func pollBlockchainChannel() {
 func writeData(rw *bufio.ReadWriter) {
 
 	for {
-		time.Sleep(5 * time.Second)
-		mutex.Lock()
-		bytes, err := json.Marshal(Blockchain)
-		if err != nil {
-			log.Println(err)
-		}
-		mutex.Unlock()
+		select {
+		case <-blockchainUpdate:
+			mutex.Lock()
+			bytes, err := json.Marshal(Blockchain)
+			if err != nil {
+				log.Println(err)
+			}
+			mutex.Unlock()
 
-		rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-		rw.Flush()
+			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+			rw.Flush()
+		}
 
 	}
 }
