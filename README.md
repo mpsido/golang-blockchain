@@ -2,7 +2,7 @@
 
 ## Credentials:
 
-The source code started as a copy of the basic example from [mycoralhealth's](https://github.com/mycoralhealth/) [blockchain-tutorial](https://github.com/mycoralhealth/blockchain-tutorial) and the explanations on the [corresponding blog](https://medium.com/@mycoralhealth/code-a-simple-p2p-blockchain-in-go-46662601f417).
+The source code started as a copy of the basic example from [mycoralhealth's](https://github.com/mycoralhealth/) [blockchain-tutorial](https://github.com/mycoralhealth/blockchain-tutorial/tree/a2893c0c386fbcca63d2c2cad2eb65689c758161) and the explanations on the [corresponding blog](https://medium.com/@mycoralhealth/code-a-simple-p2p-blockchain-in-go-46662601f417).
 
 The code was then hacked and adapted for specific learning and practical needs.
 
