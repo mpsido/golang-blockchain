@@ -1,3 +1,13 @@
+# Golang blockchain
+
+## Credentials:
+
+The source code started as a copy of the basic example from [mycoralhealth's](https://github.com/mycoralhealth/) [blockchain-tutorial](https://github.com/mycoralhealth/blockchain-tutorial) and the explanations on the [corresponding blog](https://medium.com/@mycoralhealth/code-a-simple-p2p-blockchain-in-go-46662601f417).
+
+The code was then hacked and adapted for specific learning and practical needs.
+
+## How to use
+
 Download dependencies using [dep](https://github.com/golang/dep)
 
 	dep ensure
@@ -40,4 +50,3 @@ Run the blockchain:
 cd /go/src/my_blockchain/
 go run main.go -l 10000
 ```
-
