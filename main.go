@@ -50,6 +50,7 @@ type Message struct {
 var Blockchain []Block
 
 var mutex = &sync.Mutex{}
+var blockchainChannel = make(chan []Block)
 
 
 // web server
@@ -107,8 +108,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 
 	mutex.Lock()
 	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-		Blockchain = append(Blockchain, newBlock)
-		spew.Dump(Blockchain)
+		blockchainChannel <- append(Blockchain, newBlock)
 	}
 	mutex.Unlock()
 
@@ -189,7 +189,6 @@ func handleStream(s net.Stream) {
 }
 
 func readData(rw *bufio.ReadWriter) {
-
 	for {
 		str, err := rw.ReadString('\n')
 		if err != nil {
@@ -200,15 +199,25 @@ func readData(rw *bufio.ReadWriter) {
 			return
 		}
 		if str != "\n" {
-
 			chain := make([]Block, 0)
 			if err := json.Unmarshal([]byte(str), &chain); err != nil {
 				log.Fatal(err)
+			} else {
+				blockchainChannel <- chain
 			}
+		}
+	}
+}
 
+func pollBlockchainChannel() {
+	for {
+		var newBlockchain []Block
+		select {
+		case newBlockchain = <- blockchainChannel:
 			mutex.Lock()
-			if len(chain) > len(Blockchain) {
-				Blockchain = chain
+			if len(newBlockchain) > len(Blockchain) {
+				log.Printf("Blockchain update")
+				Blockchain = newBlockchain
 				bytes, err := json.MarshalIndent(Blockchain, "", "  ")
 				if err != nil {
 
@@ -227,22 +236,22 @@ func readData(rw *bufio.ReadWriter) {
 
 func writeData(rw *bufio.ReadWriter) {
 
-	go func() {
-		for {
-			time.Sleep(5 * time.Second)
-			mutex.Lock()
-			bytes, err := json.Marshal(Blockchain)
-			if err != nil {
-				log.Println(err)
-			}
-			mutex.Unlock()
-
-			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-			rw.Flush()
-
+	for {
+		time.Sleep(5 * time.Second)
+		mutex.Lock()
+		bytes, err := json.Marshal(Blockchain)
+		if err != nil {
+			log.Println(err)
 		}
-	}()
+		mutex.Unlock()
 
+		rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+		rw.Flush()
+
+	}
+}
+
+func readConsole() {
 	stdReader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -264,15 +273,8 @@ func writeData(rw *bufio.ReadWriter) {
 		if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
 			newBlockchain = append(Blockchain, newBlock)
 		}
+		blockchainChannel <- newBlockchain
 		mutex.Unlock()
-
-		bytes, err := json.Marshal(newBlockchain)
-		if err != nil {
-			log.Println(err)
-		}
-
-		rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-		rw.Flush()
 	}
 
 }
@@ -312,6 +314,8 @@ func main() {
 		// a user-defined protocol name.
 		ha.SetStreamHandler("/p2p/1.0.0", handleStream)
 
+		go pollBlockchainChannel()
+		go readConsole()
 		go run()
 		select {} // hang forever
 		/**** This is where the listener code ends ****/
@@ -357,6 +361,8 @@ func main() {
 		rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
 		// Create a thread to read and write data.
+		go pollBlockchainChannel()
+		go readConsole()
 		go writeData(rw)
 		go readData(rw)
 		go run()
