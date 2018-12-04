@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	mrand "math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -52,7 +52,6 @@ var Blockchain []Block
 var mutex = &sync.Mutex{}
 var blockchainChannel = make(chan []Block)
 var blockchainUpdate = make(chan int)
-
 
 // web server
 func run() error {
@@ -214,7 +213,7 @@ func pollBlockchainChannel() {
 	for {
 		var newBlockchain []Block
 		select {
-		case newBlockchain = <- blockchainChannel:
+		case newBlockchain = <-blockchainChannel:
 			mutex.Lock()
 			if len(newBlockchain) > len(Blockchain) {
 				log.Printf("Blockchain update")
