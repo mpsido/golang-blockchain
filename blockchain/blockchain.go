@@ -4,8 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"sync"
 	"time"
 )
+
+var mutex = &sync.Mutex{}
 
 // Block represents each 'item' in the blockchain
 type Block struct {
@@ -16,13 +19,46 @@ type Block struct {
 	PrevHash  string
 }
 
+// Blockchain is a series of validated Blocks
+var Blockchain []Block
+
+// GenesisBlock init blockchain
+func GenesisBlock() {
+
+	t := time.Now()
+	genesisBlock := Block{}
+	genesisBlock = Block{0, t.String(), 0, CalculateHash(genesisBlock), ""}
+
+	Blockchain = append(Blockchain, genesisBlock)
+}
+
+// GetBlockchain get a copy of the blockchain for logging purpose
+func GetBlockchain() []Block {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return Blockchain
+}
+
+// AcceptBlockchainWinner take a few blocks as input and decide to add it to the blockchain or not
+func AcceptBlockchainWinner(peersBlockchain []Block) bool {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(peersBlockchain) > len(Blockchain) {
+		Blockchain = peersBlockchain
+		return true
+	}
+	return false
+}
+
 // IsBlockValid make sure block is valid by checking index, and comparing the hash of the previous block
-func IsBlockValid(newBlock, oldBlock Block) bool {
-	if oldBlock.Index+1 != newBlock.Index {
+func IsBlockValid(newBlock Block) bool {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if Blockchain[len(Blockchain)-1].Index+1 != newBlock.Index {
 		return false
 	}
 
-	if oldBlock.Hash != newBlock.PrevHash {
+	if Blockchain[len(Blockchain)-1].Hash != newBlock.PrevHash {
 		return false
 	}
 
@@ -43,16 +79,17 @@ func CalculateHash(block Block) string {
 }
 
 // GenerateBlock create a new block using previous block's hash
-func GenerateBlock(oldBlock Block, BPM int) Block {
-
+func GenerateBlock(BPM int) Block {
+	mutex.Lock()
+	defer mutex.Unlock()
 	var newBlock Block
 
 	t := time.Now()
 
-	newBlock.Index = oldBlock.Index + 1
+	newBlock.Index = Blockchain[len(Blockchain)-1].Index + 1
 	newBlock.Timestamp = t.String()
 	newBlock.BPM = BPM
-	newBlock.PrevHash = oldBlock.Hash
+	newBlock.PrevHash = Blockchain[len(Blockchain)-1].Hash
 	newBlock.Hash = CalculateHash(newBlock)
 
 	return newBlock

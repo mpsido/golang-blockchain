@@ -14,7 +14,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -36,10 +35,6 @@ type Message struct {
 	BPM int
 }
 
-// Blockchain is a series of validated Blocks
-var Blockchain []blockchain.Block
-
-var mutex = &sync.Mutex{}
 var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
 
@@ -73,7 +68,7 @@ func makeMuxRouter() http.Handler {
 
 // write blockchain when we receive an http request
 func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+	bytes, err := json.MarshalIndent(blockchain.GetBlockchain(), "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -94,13 +89,11 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	newBlock := blockchain.GenerateBlock(Blockchain[len(Blockchain)-1], m.BPM)
+	newBlock := blockchain.GenerateBlock(m.BPM)
 
-	mutex.Lock()
-	if blockchain.IsBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-		blockchainChannel <- append(Blockchain, newBlock)
+	if blockchain.IsBlockValid(newBlock) {
+		blockchainChannel <- append(blockchain.GetBlockchain(), newBlock)
 	}
-	mutex.Unlock()
 
 	respondWithJSON(w, r, http.StatusCreated, newBlock)
 
@@ -204,11 +197,10 @@ func pollBlockchainChannel() {
 		var newBlockchain []blockchain.Block
 		select {
 		case newBlockchain = <-blockchainChannel:
-			mutex.Lock()
-			if len(newBlockchain) > len(Blockchain) {
+			if blockchain.AcceptBlockchainWinner(newBlockchain) {
 				log.Printf("Blockchain update")
-				Blockchain = newBlockchain
-				bytes, err := json.MarshalIndent(Blockchain, "", "  ")
+				nextBlockchain := blockchain.GetBlockchain()
+				bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
 				if err != nil {
 
 					log.Fatal(err)
@@ -218,9 +210,8 @@ func pollBlockchainChannel() {
 				fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
 
 				blockchainUpdate <- 1
-				spew.Dump(Blockchain)
+				spew.Dump(nextBlockchain)
 			}
-			mutex.Unlock()
 		}
 	}
 }
@@ -230,12 +221,10 @@ func writeData(rw *bufio.ReadWriter) {
 	for {
 		select {
 		case <-blockchainUpdate:
-			mutex.Lock()
-			bytes, err := json.Marshal(Blockchain)
+			bytes, err := json.Marshal(blockchain.GetBlockchain())
 			if err != nil {
 				log.Println(err)
 			}
-			mutex.Unlock()
 
 			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
 			rw.Flush()
@@ -259,25 +248,19 @@ func readConsole() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		newBlock := blockchain.GenerateBlock(Blockchain[len(Blockchain)-1], bpm)
+		newBlock := blockchain.GenerateBlock(bpm)
 
 		var newBlockchain []blockchain.Block
-		mutex.Lock()
-		if blockchain.IsBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
-			newBlockchain = append(Blockchain, newBlock)
+		if blockchain.IsBlockValid(newBlock) {
+			newBlockchain = append(blockchain.GetBlockchain(), newBlock)
 		}
 		blockchainChannel <- newBlockchain
-		mutex.Unlock()
 	}
 
 }
 
 func main() {
-	t := time.Now()
-	genesisBlock := blockchain.Block{}
-	genesisBlock = blockchain.Block{0, t.String(), 0, blockchain.CalculateHash(genesisBlock), ""}
-
-	Blockchain = append(Blockchain, genesisBlock)
+	blockchain.GenesisBlock()
 
 	// LibP2P code uses golog to log messages. They log with different
 	// string IDs (i.e. "swarm"). We can control the verbosity level for
