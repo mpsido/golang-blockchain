@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -20,6 +18,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/golang-blockchain/blockchain"
 	"github.com/gorilla/mux"
 	golog "github.com/ipfs/go-log"
 	libp2p "github.com/libp2p/go-libp2p"
@@ -32,25 +31,16 @@ import (
 	gologging "github.com/whyrusleeping/go-logging"
 )
 
-// Block represents each 'item' in the blockchain
-type Block struct {
-	Index     int
-	Timestamp string
-	BPM       int
-	Hash      string
-	PrevHash  string
-}
-
 // Message takes incoming JSON payload for writing heart rate
 type Message struct {
 	BPM int
 }
 
 // Blockchain is a series of validated Blocks
-var Blockchain []Block
+var Blockchain []blockchain.Block
 
 var mutex = &sync.Mutex{}
-var blockchainChannel = make(chan []Block)
+var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
 
 // web server
@@ -104,10 +94,10 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	newBlock := generateBlock(Blockchain[len(Blockchain)-1], m.BPM)
+	newBlock := blockchain.GenerateBlock(Blockchain[len(Blockchain)-1], m.BPM)
 
 	mutex.Lock()
-	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
+	if blockchain.IsBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
 		blockchainChannel <- append(Blockchain, newBlock)
 	}
 	mutex.Unlock()
@@ -199,7 +189,7 @@ func readData(rw *bufio.ReadWriter) {
 			return
 		}
 		if str != "\n" {
-			chain := make([]Block, 0)
+			chain := make([]blockchain.Block, 0)
 			if err := json.Unmarshal([]byte(str), &chain); err != nil {
 				log.Fatal(err)
 			} else {
@@ -211,7 +201,7 @@ func readData(rw *bufio.ReadWriter) {
 
 func pollBlockchainChannel() {
 	for {
-		var newBlockchain []Block
+		var newBlockchain []blockchain.Block
 		select {
 		case newBlockchain = <-blockchainChannel:
 			mutex.Lock()
@@ -269,11 +259,11 @@ func readConsole() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		newBlock := generateBlock(Blockchain[len(Blockchain)-1], bpm)
+		newBlock := blockchain.GenerateBlock(Blockchain[len(Blockchain)-1], bpm)
 
-		var newBlockchain []Block
+		var newBlockchain []blockchain.Block
 		mutex.Lock()
-		if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
+		if blockchain.IsBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
 			newBlockchain = append(Blockchain, newBlock)
 		}
 		blockchainChannel <- newBlockchain
@@ -284,8 +274,8 @@ func readConsole() {
 
 func main() {
 	t := time.Now()
-	genesisBlock := Block{}
-	genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), ""}
+	genesisBlock := blockchain.Block{}
+	genesisBlock = blockchain.Block{0, t.String(), 0, blockchain.CalculateHash(genesisBlock), ""}
 
 	Blockchain = append(Blockchain, genesisBlock)
 
@@ -372,46 +362,4 @@ func main() {
 
 		select {} // hang forever
 	}
-}
-
-// make sure block is valid by checking index, and comparing the hash of the previous block
-func isBlockValid(newBlock, oldBlock Block) bool {
-	if oldBlock.Index+1 != newBlock.Index {
-		return false
-	}
-
-	if oldBlock.Hash != newBlock.PrevHash {
-		return false
-	}
-
-	if calculateHash(newBlock) != newBlock.Hash {
-		return false
-	}
-
-	return true
-}
-
-// SHA256 hashing
-func calculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash
-	h := sha256.New()
-	h.Write([]byte(record))
-	hashed := h.Sum(nil)
-	return hex.EncodeToString(hashed)
-}
-
-// create a new block using previous block's hash
-func generateBlock(oldBlock Block, BPM int) Block {
-
-	var newBlock Block
-
-	t := time.Now()
-
-	newBlock.Index = oldBlock.Index + 1
-	newBlock.Timestamp = t.String()
-	newBlock.BPM = BPM
-	newBlock.PrevHash = oldBlock.Hash
-	newBlock.Hash = calculateHash(newBlock)
-
-	return newBlock
 }
