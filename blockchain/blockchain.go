@@ -3,12 +3,16 @@ package blockchain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 var mutex = &sync.Mutex{}
+
+const difficulty = 1
 
 // Block represents each 'item' in the blockchain
 type Block struct {
@@ -17,6 +21,7 @@ type Block struct {
 	BPM       int
 	Hash      string
 	PrevHash  string
+	Nonce     string
 }
 
 // Blockchain is a series of validated Blocks
@@ -24,10 +29,24 @@ var Blockchain []Block
 
 // GenesisBlock init blockchain
 func GenesisBlock() {
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	t := time.Now()
 	genesisBlock := Block{}
-	genesisBlock = Block{0, t.String(), 0, CalculateHash(genesisBlock), ""}
+	genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", ""}
+	for i := 0; ; i++ {
+		hex := fmt.Sprintf("%x", i)
+		genesisBlock.Nonce = hex
+		if !isHashValid(calculateHash(genesisBlock), difficulty) {
+			fmt.Println(calculateHash(genesisBlock), " do more work!")
+			continue
+		} else {
+			fmt.Println(calculateHash(genesisBlock), " work done!")
+			genesisBlock.Hash = calculateHash(genesisBlock)
+			break
+		}
+	}
 
 	Blockchain = append(Blockchain, genesisBlock)
 }
@@ -55,23 +74,20 @@ func IsBlockValid(newBlock Block) bool {
 	mutex.Lock()
 	defer mutex.Unlock()
 	if Blockchain[len(Blockchain)-1].Index+1 != newBlock.Index {
+		fmt.Println("wrong Index")
 		return false
 	}
 
 	if Blockchain[len(Blockchain)-1].Hash != newBlock.PrevHash {
+		fmt.Printf("wrong PrevHash")
 		return false
 	}
-
-	if CalculateHash(newBlock) != newBlock.Hash {
-		return false
-	}
-
-	return true
+	return isHashValid(newBlock.Hash, difficulty)
 }
 
-// CalculateHash SHA256 hashing
-func CalculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash
+// calculateHash SHA256 hashing
+func calculateHash(block Block) string {
+	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
 	h := sha256.New()
 	_, _ = h.Write([]byte(record))
 	hashed := h.Sum(nil)
@@ -90,7 +106,24 @@ func GenerateBlock(BPM int) Block {
 	newBlock.Timestamp = t.String()
 	newBlock.BPM = BPM
 	newBlock.PrevHash = Blockchain[len(Blockchain)-1].Hash
-	newBlock.Hash = CalculateHash(newBlock)
+	newBlock.Hash = calculateHash(newBlock)
+	for i := 0; ; i++ {
+		hex := fmt.Sprintf("%x", i)
+		newBlock.Nonce = hex
+		if !isHashValid(calculateHash(newBlock), difficulty) {
+			fmt.Println(calculateHash(newBlock), " do more work!")
+			continue
+		} else {
+			fmt.Println(calculateHash(newBlock), " work done!")
+			newBlock.Hash = calculateHash(newBlock)
+			break
+		}
 
+	}
 	return newBlock
+}
+
+func isHashValid(hash string, difficulty int) bool {
+	prefix := strings.Repeat("0", difficulty)
+	return strings.HasPrefix(hash, prefix)
 }

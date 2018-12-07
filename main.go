@@ -179,7 +179,7 @@ func readData(rw *bufio.ReadWriter) {
 		}
 
 		if str == "" {
-			return
+			continue
 		}
 		if str != "\n" {
 			chain := make([]blockchain.Block, 0)
@@ -197,6 +197,7 @@ func pollBlockchainChannel() {
 		var newBlockchain []blockchain.Block
 		select {
 		case newBlockchain = <-blockchainChannel:
+			log.Printf("Blockchain update")
 			if blockchain.AcceptBlockchainWinner(newBlockchain) {
 				log.Printf("Blockchain update")
 				nextBlockchain := blockchain.GetBlockchain()
@@ -223,7 +224,7 @@ func writeData(rw *bufio.ReadWriter) {
 		case <-blockchainUpdate:
 			bytes, err := json.Marshal(blockchain.GetBlockchain())
 			if err != nil {
-				log.Println(err)
+				log.Fatal(err)
 			}
 
 			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
@@ -240,21 +241,25 @@ func readConsole() {
 		fmt.Print("> ")
 		sendData, err := stdReader.ReadString('\n')
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			continue
 		}
 
 		sendData = strings.Replace(sendData, "\n", "", -1)
 		bpm, err := strconv.Atoi(sendData)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			continue
 		}
 		newBlock := blockchain.GenerateBlock(bpm)
 
 		var newBlockchain []blockchain.Block
 		if blockchain.IsBlockValid(newBlock) {
 			newBlockchain = append(blockchain.GetBlockchain(), newBlock)
+			blockchainChannel <- newBlockchain
+		} else {
+			log.Fatal("Invalid block")
 		}
-		blockchainChannel <- newBlockchain
 	}
 
 }
