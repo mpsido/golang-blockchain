@@ -84,10 +84,12 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&m); err != nil {
+		log.Println("Wrong request")
 		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
 		return
 	}
 	defer r.Body.Close()
+	log.Println("Decoding received block")
 
 	newBlock := blockchain.GenerateBlock(m.BPM)
 
@@ -199,7 +201,7 @@ func pollBlockchainChannel() {
 		case newBlockchain = <-blockchainChannel:
 			log.Printf("Blockchain update")
 			if blockchain.AcceptBlockchainWinner(newBlockchain) {
-				log.Printf("Blockchain update")
+				log.Printf("Blockchain update accepted")
 				nextBlockchain := blockchain.GetBlockchain()
 				bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
 				if err != nil {
@@ -210,7 +212,7 @@ func pollBlockchainChannel() {
 				// Reset console color: 	\x1b[0m
 				fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
 
-				blockchainUpdate <- 1
+				go func() { blockchainUpdate <- 1 }()
 				spew.Dump(nextBlockchain)
 			}
 		}
