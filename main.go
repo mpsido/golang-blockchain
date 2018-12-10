@@ -39,7 +39,7 @@ var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
 
 // web server
-func run() error {
+func run() {
 	mux := makeMuxRouter()
 	httpPort := "8080"
 	log.Println("HTTP Server Listening on port :", httpPort)
@@ -52,10 +52,8 @@ func run() error {
 	}
 
 	if err := s.ListenAndServe(); err != nil {
-		return err
+		return
 	}
-
-	return nil
 }
 
 // create handlers
@@ -73,7 +71,7 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	io.WriteString(w, string(bytes))
+	_, _ = io.WriteString(w, string(bytes))
 }
 
 // takes JSON payload as an input for heart rate (BPM)
@@ -105,11 +103,11 @@ func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload i
 	response, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP 500: Internal Server Error"))
+		_, _ = w.Write([]byte("HTTP 500: Internal Server Error"))
 		return
 	}
 	w.WriteHeader(code)
-	w.Write(response)
+	_, _ = w.Write(response)
 }
 
 // makeBasicHost creates a LibP2P host with a random peer ID listening on the
@@ -195,44 +193,37 @@ func readData(rw *bufio.ReadWriter) {
 }
 
 func pollBlockchainChannel() {
-	for {
-		var newBlockchain []blockchain.Block
-		select {
-		case newBlockchain = <-blockchainChannel:
-			log.Printf("Blockchain update")
-			if blockchain.AcceptBlockchainWinner(newBlockchain) {
-				log.Printf("Blockchain update accepted")
-				nextBlockchain := blockchain.GetBlockchain()
-				bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
-				if err != nil {
+	var newBlockchain []blockchain.Block
+	for newBlockchain = range blockchainChannel {
+		log.Printf("Blockchain update")
+		if blockchain.AcceptBlockchainWinner(newBlockchain) {
+			log.Printf("Blockchain update accepted")
+			nextBlockchain := blockchain.GetBlockchain()
+			bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
+			if err != nil {
 
-					log.Fatal(err)
-				}
-				// Green console color: 	\x1b[32m
-				// Reset console color: 	\x1b[0m
-				fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
-
-				go func() { blockchainUpdate <- 1 }()
-				spew.Dump(nextBlockchain)
+				log.Fatal(err)
 			}
+			// Green console color: 	\x1b[32m
+			// Reset console color: 	\x1b[0m
+			fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
+
+			go func() { blockchainUpdate <- 1 }()
+			spew.Dump(nextBlockchain)
 		}
 	}
 }
 
 func writeData(rw *bufio.ReadWriter) {
 
-	for {
-		select {
-		case <-blockchainUpdate:
-			bytes, err := json.Marshal(blockchain.GetBlockchain())
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-			rw.Flush()
+	for range blockchainUpdate {
+		bytes, err := json.Marshal(blockchain.GetBlockchain())
+		if err != nil {
+			log.Fatal(err)
 		}
 
+		_, _ = rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+		rw.Flush()
 	}
 }
 
