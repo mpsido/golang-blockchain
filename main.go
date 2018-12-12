@@ -18,6 +18,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang-blockchain/blockchain"
+	"github.com/golang-blockchain/database"
 	"github.com/gorilla/mux"
 	golog "github.com/ipfs/go-log"
 	libp2p "github.com/libp2p/go-libp2p"
@@ -207,6 +208,8 @@ func pollBlockchainChannel() {
 			// Green console color: 	\x1b[32m
 			// Reset console color: 	\x1b[0m
 			fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
+
+			database.WriteBlockchain(nextBlockchain)
 
 			go func() { blockchainUpdate <- 1 }()
 			spew.Dump(nextBlockchain)

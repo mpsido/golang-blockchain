@@ -50,3 +50,15 @@ Run the blockchain:
 cd /go/src/my_blockchain/
 go run main.go -l 10000
 ```
+
+Run the mongoDb server in a docker container:
+
+```bash
+docker run --name mongo-golang-blockchain -d mongo:latest
+```
+
+Connect to the mongoDb CLI:
+
+```bash
+docker exec -it mongo-golang-blockchain mongo'
+```
