@@ -197,7 +197,7 @@ func pollBlockchainChannel() {
 	var newBlockchain []blockchain.Block
 	for newBlockchain = range blockchainChannel {
 		log.Printf("Blockchain update")
-		if blockchain.AcceptBlockchainWinner(newBlockchain) {
+		if bAccept, newBlocks := blockchain.AcceptBlockchainWinner(newBlockchain); bAccept {
 			log.Printf("Blockchain update accepted")
 			nextBlockchain := blockchain.GetBlockchain()
 			bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
@@ -209,7 +209,7 @@ func pollBlockchainChannel() {
 			// Reset console color: 	\x1b[0m
 			fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
 
-			database.WriteBlockchain(nextBlockchain)
+			database.WriteBlockchain(newBlocks)
 
 			go func() { blockchainUpdate <- 1 }()
 			spew.Dump(nextBlockchain)

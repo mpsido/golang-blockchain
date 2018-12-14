@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,15 +27,15 @@ type Block struct {
 
 // Blockchain is a series of validated Blocks
 var Blockchain []Block
+var blockMap map[string]Block
+var genesisBlockHash string
 
 // GenesisBlock init blockchain
 func GenesisBlock() {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	t := time.Now()
-	genesisBlock := Block{}
-	genesisBlock = Block{0, t.String(), 0, calculateHash(genesisBlock), "", ""}
+	genesisBlock := Block{0, "", 0, "", "", ""}
 	for i := 0; ; i++ {
 		hex := fmt.Sprintf("%x", i)
 		genesisBlock.Nonce = hex
@@ -44,11 +45,14 @@ func GenesisBlock() {
 		} else {
 			fmt.Println(calculateHash(genesisBlock), " work done!")
 			genesisBlock.Hash = calculateHash(genesisBlock)
+			genesisBlockHash = genesisBlock.Hash
 			break
 		}
 	}
 
 	Blockchain = append(Blockchain, genesisBlock)
+	blockMap := make(map[string]Block)
+	blockMap[genesisBlock.Hash] = genesisBlock
 }
 
 // GetBlockchain get a copy of the blockchain for logging purpose
@@ -59,30 +63,62 @@ func GetBlockchain() []Block {
 }
 
 // AcceptBlockchainWinner take a few blocks as input and decide to add it to the blockchain or not
-func AcceptBlockchainWinner(peersBlockchain []Block) bool {
+func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 	mutex.Lock()
 	defer mutex.Unlock()
+	var addedBlocks []Block
 	if len(peersBlockchain) > len(Blockchain) {
-		Blockchain = peersBlockchain
-		return true
+		bAccept := true
+		for i := len(peersBlockchain) - 1; i >= 0; i -= 1 {
+			log.Printf("Index i = %d\n", i)
+			if i == 0 {
+				if peersBlockchain[i].Hash != genesisBlockHash {
+					log.Println("Trying to work on another genesisBlock")
+					bAccept = false
+					break
+				}
+				log.Println("Accept from genesisBlock")
+				return true, addedBlocks
+			}
+			if !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
+				log.Println("Peer's blockchain is not consistent with itself")
+				bAccept = false
+				break
+			}
+
+			if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
+				log.Printf("Accepting from index %d\n", i)
+				break
+			}
+			addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
+
+		}
+		if bAccept {
+			Blockchain = append(Blockchain, addedBlocks...)
+		}
+		return bAccept, addedBlocks
 	}
-	return false
+	return false, addedBlocks
+}
+
+func isBlockValid(newBlock Block, previousBlock Block) bool {
+	if previousBlock.Index+1 != newBlock.Index {
+		fmt.Println("wrong Index")
+		return false
+	}
+
+	if previousBlock.Hash != newBlock.PrevHash {
+		fmt.Printf("wrong PrevHash")
+		return false
+	}
+	return isHashValid(newBlock.Hash, difficulty)
 }
 
 // IsBlockValid make sure block is valid by checking index, and comparing the hash of the previous block
 func IsBlockValid(newBlock Block) bool {
 	mutex.Lock()
 	defer mutex.Unlock()
-	if Blockchain[len(Blockchain)-1].Index+1 != newBlock.Index {
-		fmt.Println("wrong Index")
-		return false
-	}
-
-	if Blockchain[len(Blockchain)-1].Hash != newBlock.PrevHash {
-		fmt.Printf("wrong PrevHash")
-		return false
-	}
-	return isHashValid(newBlock.Hash, difficulty)
+	return isBlockValid(newBlock, Blockchain[len(Blockchain)-1])
 }
 
 // calculateHash SHA256 hashing
