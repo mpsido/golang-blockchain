@@ -38,6 +38,7 @@ type Message struct {
 
 var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
+var mongoDbIp string
 
 // web server
 func run() {
@@ -200,7 +201,7 @@ func pollBlockchainChannel() {
 		if bAccept, newBlocks := blockchain.AcceptBlockchainWinner(newBlockchain); bAccept {
 			log.Printf("Blockchain update accepted")
 
-			database.WriteBlockchain(newBlocks)
+			database.WriteBlockchain(mongoDbIp, newBlocks)
 
 			go func() { blockchainUpdate <- 1 }()
 			spew.Dump(newBlocks)
@@ -250,9 +251,6 @@ func readConsole() {
 }
 
 func main() {
-	blockchain.GenesisBlock()
-	database.WriteBlockchain(blockchain.GetBlockchain())
-
 	// LibP2P code uses golog to log messages. They log with different
 	// string IDs (i.e. "swarm"). We can control the verbosity level for
 	// all loggers with:
@@ -260,6 +258,7 @@ func main() {
 
 	// Parse options from the command line
 	listenF := flag.Int("l", 0, "wait for incoming connections")
+	dbIp := flag.String("g", "", "mongoDb's IP address")
 	target := flag.String("d", "", "target peer to dial")
 	secio := flag.Bool("secio", false, "enable secio")
 	seed := flag.Int64("seed", 0, "set random seed for id generation")
@@ -269,11 +268,20 @@ func main() {
 		log.Fatal("Please provide a port to bind on with -l")
 	}
 
+	if *dbIp == "" {
+		log.Fatal("Please provide mongoDb's IP address")
+	} else {
+		mongoDbIp = *dbIp
+	}
+
 	// Make a host that listens on the given multiaddress
 	ha, err := makeBasicHost(*listenF, *secio, *seed)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	blockchain.GenesisBlock()
+	database.WriteBlockchain(mongoDbIp, blockchain.GetBlockchain())
 
 	if *target == "" {
 		log.Println("listening for connections")

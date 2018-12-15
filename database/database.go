@@ -11,8 +11,8 @@ import (
 	"github.com/golang-blockchain/blockchain"
 )
 
-func WriteBlockchain(inputBlockchain []blockchain.Block) {
-	session, err := mgo.Dial("172.17.0.3")
+func WriteBlockchain(mongoDbIp string, inputBlockchain []blockchain.Block) {
+	session, err := mgo.Dial(mongoDbIp)
 	if err != nil {
 		panic(err)
 	}
