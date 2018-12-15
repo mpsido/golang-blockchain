@@ -93,7 +93,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	newBlock := blockchain.GenerateBlock(m.BPM)
 
 	if blockchain.IsBlockValid(newBlock) {
-		blockchainChannel <- append(blockchain.GetBlockchain(), newBlock)
+		blockchainChannel <- []blockchain.Block{newBlock}
 	}
 
 	respondWithJSON(w, r, http.StatusCreated, newBlock)
@@ -199,20 +199,11 @@ func pollBlockchainChannel() {
 		log.Printf("Blockchain update")
 		if bAccept, newBlocks := blockchain.AcceptBlockchainWinner(newBlockchain); bAccept {
 			log.Printf("Blockchain update accepted")
-			nextBlockchain := blockchain.GetBlockchain()
-			bytes, err := json.MarshalIndent(nextBlockchain, "", "  ")
-			if err != nil {
-
-				log.Fatal(err)
-			}
-			// Green console color: 	\x1b[32m
-			// Reset console color: 	\x1b[0m
-			fmt.Printf("\x1b[32m%s\x1b[0m> ", string(bytes))
 
 			database.WriteBlockchain(newBlocks)
 
 			go func() { blockchainUpdate <- 1 }()
-			spew.Dump(nextBlockchain)
+			spew.Dump(newBlocks)
 		}
 	}
 }
@@ -249,10 +240,8 @@ func readConsole() {
 		}
 		newBlock := blockchain.GenerateBlock(bpm)
 
-		var newBlockchain []blockchain.Block
 		if blockchain.IsBlockValid(newBlock) {
-			newBlockchain = append(blockchain.GetBlockchain(), newBlock)
-			blockchainChannel <- newBlockchain
+			blockchainChannel <- []blockchain.Block{newBlock}
 		} else {
 			log.Fatal("Invalid block")
 		}
@@ -262,6 +251,7 @@ func readConsole() {
 
 func main() {
 	blockchain.GenesisBlock()
+	database.WriteBlockchain(blockchain.GetBlockchain())
 
 	// LibP2P code uses golog to log messages. They log with different
 	// string IDs (i.e. "swarm"). We can control the verbosity level for

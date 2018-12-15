@@ -51,7 +51,7 @@ func GenesisBlock() {
 	}
 
 	Blockchain = append(Blockchain, genesisBlock)
-	blockMap := make(map[string]Block)
+	blockMap = make(map[string]Block)
 	blockMap[genesisBlock.Hash] = genesisBlock
 }
 
@@ -67,33 +67,47 @@ func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	var addedBlocks []Block
-	if len(peersBlockchain) > len(Blockchain) {
+	if peersBlockchain[len(peersBlockchain)-1].Index > Blockchain[len(Blockchain)-1].Index {
 		bAccept := true
 		for i := len(peersBlockchain) - 1; i >= 0; i -= 1 {
 			log.Printf("Index i = %d\n", i)
-			if i == 0 {
+			if peersBlockchain[i].Index == 0 {
+				log.Println("Got a genesis Block")
+				if i != 0 {
+					log.Println("The input chain has blocks before genesisBlock")
+					return false, addedBlocks
+				}
 				if peersBlockchain[i].Hash != genesisBlockHash {
 					log.Println("Trying to work on another genesisBlock")
 					bAccept = false
 					break
 				}
 				log.Println("Accept from genesisBlock")
+				addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
 				return true, addedBlocks
 			}
-			if !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
+			if i > 0 && !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
 				log.Println("Peer's blockchain is not consistent with itself")
 				bAccept = false
 				break
 			}
 
 			if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
-				log.Printf("Accepting from index %d\n", i)
+				log.Printf("Accepting from index %d\n", peersBlockchain[i].Index)
 				break
 			}
 			addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
 
 		}
 		if bAccept {
+			if !isBlockValid(addedBlocks[0], Blockchain[len(Blockchain)-1]) {
+				log.Println("Valid chain but it does not continue to existing chain")
+				return false, addedBlocks
+			}
+			log.Println("Accepting blocks")
+			for _, block := range addedBlocks {
+				blockMap[block.Hash] = block
+			}
 			Blockchain = append(Blockchain, addedBlocks...)
 		}
 		return bAccept, addedBlocks
