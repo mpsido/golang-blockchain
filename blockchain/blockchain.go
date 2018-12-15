@@ -62,13 +62,34 @@ func GetBlockchain() []Block {
 	return Blockchain
 }
 
+func appendBlocks(addedBlocks []Block) bool {
+	if !isBlockValid(addedBlocks[0], Blockchain[len(Blockchain)-1]) {
+		log.Println("Valid chain but it does not continue to existing chain")
+		return false
+	}
+	log.Println("Accepting blocks")
+	log.Println(blockMap)
+	// discard uncle blocks from the hash map
+	for _, block := range Blockchain[addedBlocks[0].Index:] {
+		delete(blockMap, block.Hash)
+	}
+
+	// add new added blocks in the hash map
+	for _, block := range addedBlocks {
+		blockMap[block.Hash] = block
+	}
+	log.Println("Accepted")
+	log.Println(blockMap)
+	Blockchain = append(Blockchain[0:addedBlocks[0].Index], addedBlocks...)
+	return true
+}
+
 // AcceptBlockchainWinner take a few blocks as input and decide to add it to the blockchain or not
 func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	var addedBlocks []Block
 	if peersBlockchain[len(peersBlockchain)-1].Index > Blockchain[len(Blockchain)-1].Index {
-		bAccept := true
 		for i := len(peersBlockchain) - 1; i >= 0; i -= 1 {
 			log.Printf("Index i = %d\n", i)
 			if peersBlockchain[i].Index == 0 {
@@ -79,17 +100,14 @@ func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 				}
 				if peersBlockchain[i].Hash != genesisBlockHash {
 					log.Println("Trying to work on another genesisBlock")
-					bAccept = false
-					break
+					return false, addedBlocks
 				}
 				log.Println("Accept from genesisBlock")
-				addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
-				return true, addedBlocks
+				return appendBlocks(addedBlocks), addedBlocks
 			}
 			if i > 0 && !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
 				log.Println("Peer's blockchain is not consistent with itself")
-				bAccept = false
-				break
+				return false, addedBlocks
 			}
 
 			if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
@@ -97,20 +115,8 @@ func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 				break
 			}
 			addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
-
 		}
-		if bAccept {
-			if !isBlockValid(addedBlocks[0], Blockchain[len(Blockchain)-1]) {
-				log.Println("Valid chain but it does not continue to existing chain")
-				return false, addedBlocks
-			}
-			log.Println("Accepting blocks")
-			for _, block := range addedBlocks {
-				blockMap[block.Hash] = block
-			}
-			Blockchain = append(Blockchain, addedBlocks...)
-		}
-		return bAccept, addedBlocks
+		return appendBlocks(addedBlocks), addedBlocks
 	}
 	return false, addedBlocks
 }
