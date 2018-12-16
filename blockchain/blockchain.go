@@ -63,12 +63,11 @@ func GetBlockchain() []Block {
 }
 
 func appendBlocks(addedBlocks []Block) bool {
-	if !isBlockValid(addedBlocks[0], Blockchain[len(Blockchain)-1]) {
+	if !isBlockValid(addedBlocks[0], Blockchain[addedBlocks[0].Index-1]) {
 		log.Println("Valid chain but it does not continue to existing chain")
 		return false
 	}
 	log.Println("Accepting blocks")
-	log.Println(blockMap)
 	// discard uncle blocks from the hash map
 	for _, block := range Blockchain[addedBlocks[0].Index:] {
 		delete(blockMap, block.Hash)
@@ -78,8 +77,6 @@ func appendBlocks(addedBlocks []Block) bool {
 	for _, block := range addedBlocks {
 		blockMap[block.Hash] = block
 	}
-	log.Println("Accepted")
-	log.Println(blockMap)
 	Blockchain = append(Blockchain[0:addedBlocks[0].Index], addedBlocks...)
 	return true
 }
@@ -89,33 +86,33 @@ func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	var addedBlocks []Block
-	if peersBlockchain[len(peersBlockchain)-1].Index > Blockchain[len(Blockchain)-1].Index {
-		for i := len(peersBlockchain) - 1; i >= 0; i -= 1 {
-			log.Printf("Index i = %d\n", i)
-			if peersBlockchain[i].Index == 0 {
-				log.Println("Got a genesis Block")
-				if i != 0 {
-					log.Println("The input chain has blocks before genesisBlock")
-					return false, addedBlocks
-				}
-				if peersBlockchain[i].Hash != genesisBlockHash {
-					log.Println("Trying to work on another genesisBlock")
-					return false, addedBlocks
-				}
-				log.Println("Accept from genesisBlock")
-				return appendBlocks(addedBlocks), addedBlocks
-			}
-			if i > 0 && !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
-				log.Println("Peer's blockchain is not consistent with itself")
+	for i := len(peersBlockchain) - 1; i >= 0; i -= 1 {
+		log.Printf("Index i = %d\n", i)
+		if peersBlockchain[i].Index == 0 {
+			log.Println("Got a genesis Block")
+			if i != 0 {
+				log.Println("The input chain has blocks before genesisBlock")
 				return false, addedBlocks
 			}
-
-			if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
-				log.Printf("Accepting from index %d\n", peersBlockchain[i].Index)
-				break
+			if peersBlockchain[i].Hash != genesisBlockHash {
+				log.Println("Trying to work on another genesisBlock")
+				return false, addedBlocks
 			}
-			addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
+			log.Println("Accept from genesisBlock")
+			return appendBlocks(addedBlocks), addedBlocks
 		}
+		if i > 0 && !isBlockValid(peersBlockchain[i], peersBlockchain[i-1]) {
+			log.Println("Peer's blockchain is not consistent with itself")
+			return false, addedBlocks
+		}
+
+		if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
+			log.Printf("Accepting from index %d\n", peersBlockchain[i].Index)
+			break
+		}
+		addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)
+	}
+	if len(addedBlocks) > 0 {
 		return appendBlocks(addedBlocks), addedBlocks
 	}
 	return false, addedBlocks
