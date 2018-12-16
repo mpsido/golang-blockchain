@@ -39,6 +39,7 @@ type Message struct {
 var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
 var mongoDbIp string
+var ipfsNode string
 
 // web server
 func run() {
@@ -63,7 +64,12 @@ func makeMuxRouter() http.Handler {
 	muxRouter := mux.NewRouter()
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
 	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
+	muxRouter.HandleFunc("/getIpfs", getIpfsNode).Methods("GET")
 	return muxRouter
+}
+
+func getIpfsNode(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.WriteString(w, ipfsNode)
 }
 
 // write blockchain when we receive an http request
@@ -144,7 +150,8 @@ func makeBasicHost(listenPort int, secio bool, randseed int64) (host.Host, error
 	}
 
 	// Build host multiaddress
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", basicHost.ID().Pretty()))
+	ipfsNode = basicHost.ID().Pretty()
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", ipfsNode))
 
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
@@ -316,8 +323,7 @@ func main() {
 
 		// Decapsulate the /ipfs/<peerID> part from the target
 		// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
-		targetPeerAddr, _ := ma.NewMultiaddr(
-			fmt.Sprintf("/ipfs/%s", peer.IDB58Encode(peerid)))
+		targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", peer.IDB58Encode(peerid)))
 		targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
 
 		// We have a peer ID and a targetAddr so we add it to the peerstore
