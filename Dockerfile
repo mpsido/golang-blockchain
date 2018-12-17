@@ -1,8 +1,8 @@
 FROM golang:1.10
 
-COPY ./libp2p/ /go/src/github.com/libp2p/
-WORKDIR /go/src/github.com/libp2p/go-libp2p/
-RUN make
-RUN make deps
+# Install dep
+RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
-
+# COPY ./* /go/src/github.com/golang-blockchain/
+WORKDIR /go/src/github.com/golang-blockchain
+# RUN dep ensure -v
