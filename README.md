@@ -6,59 +6,149 @@ The source code started as a copy of the basic example from [mycoralhealth's](ht
 
 The code was then hacked and adapted for specific learning and practical needs.
 
-## How to use
+## Create many peers using docker containers 
 
-Download dependencies using [dep](https://github.com/golang/dep)
+A blockchain is a peer-to-peer network involving many servers discussing with each other. You can emulate this behaviour on your localhost using docker containers.
 
-	dep ensure
+For every peer we have a mongoDb instance acting as a database to store the blockchain. To emulate this we create **two docker containers for every node**: a container running a mongoDb daemon and a container run the golang code inside this project.
 
-Prepare the docker instance:
+No matter how much peers we want to emulate we have two docker images:
 
-1. Download [go-libp2p](https://github.com/libp2p/go-libp2p):
-
+An image we build using the Dockerfile inside this project:
 
 ```bash
-> go get -u -d github.com/libp2p/go-libp2p/...
-> cd $GOPATH/src/github.com/libp2p/go-libp2p
-> make
-> make deps
+docker build -t golang-blockchain .
 ```
 
-2. Build docker instance
+The latest version of mongoDb: `mongo:latest`. 
 
-Copy libp2p from where it had been downloaded:
+See scripts below to get example scripts allowing you run as many containers as you want from these images. 
+
+## Dependencies
+
+This project uses [dep](https://github.com/golang/dep) to manage golang packages. You need to download them before you run the project for the first time.
+
+You can do it on your host from your `$GOPATH/src/github.com/mpsido/golang-blockchain` repertory or inside a docker container
+
+Whichever way you choose the command is:
 
 ```bash
-cp -r $GOPATH/src/github.com/libp2p .
+dep ensure
 ```
 
-Build the docker image
+## Useful scripts
+
+### Peer's scripts
+
+Run a docker container:
 
 ```bash
-docker build -t p2p .
-```
-
-3. Run a docker container:
-
-```bash
-docker run -it -v $PWD/my_blockchain:/go/src/my_blockchain golang:p2p
+docker run -it -v $PWD:/go/src/github.com/golang-blockchain golang-blockchain:latest
 ```
 
 Run the blockchain:
 
 ```bash
-cd /go/src/my_blockchain/
-go run main.go -l 10000
+go run main.go -l 10000 -g <ip address of the mongoDb server>
 ```
+
+When the first peer is running it will tell you the address of the IPFS node it has created:
+
+The other peers need to use that address to find it:
+
+```bash
+go run main.go -l 10000 -g <ip address of the mongoDb server> -d /ip4/<ip address of the first peer>/tcp/10000/ipfs/<ipfs node>
+```  
+
+If you did not get the IPFS address you can get it with a curl request (the peer is listening on its 8080 port):
+
+```bash
+curl <IP address of the peer>:8080/getIpfs ; echo
+```
+
+
+### MongoDb scripts
 
 Run the mongoDb server in a docker container:
 
 ```bash
-docker run --name mongo-golang-blockchain -d mongo:latest
+docker run --name mongo-golang-blockchain-1 -d mongo:latest
 ```
 
-Connect to the mongoDb CLI:
+Access the command line interface of the running mongoDb container:
 
 ```bash
-docker exec -it mongo-golang-blockchain mongo'
+docker exec -it mongo-golang-blockchain-1 mongo
+```
+
+Stop the mongoDb instance:
+
+```bash
+docker stop mongo-golang-blockchain-$1 
+```
+
+Since you may want to run many mongoDb containers (one for each peer) you can create functions in your bash environement:
+
+Create a file named setenv.sh and write the following content in it:
+
+```bash
+#!/bin/bash
+docker-mongo () 
+{
+	docker run --name mongo-golang-blockchain-$1 -d mongo:latest 
+}
+mongo-cli () 
+{
+	docker exec -it mongo-golang-blockchain-$1 mongo 
+}
+mongo-stop () 
+{
+	docker stop mongo-golang-blockchain-$1 
+}
+```  
+
+Don't forget to add execution rights: `chmod +x setenv.sh`
+
+You can create 1, 2, 3 mongoDb containers like this:
+
+```bash
+docker-mongo 1
+docker-mongo 2
+docker-mongo 3
+```
+
+Then stop them one by one like this:
+```bash
+mongo-stop 1
+mongo-stop 2
+mongo-stop 3
+```
+
+### Network of docker containers
+
+Inspect docker network see: https://docs.docker.com/network/network-tutorial-standalone/#use-user-defined-bridge-networks
+```bash
+docker network inspect bridge
+```
+
+With this command you can get the IP address of every container connected to the "bridge" network (normally that is the network by default).
+
+### Clean out docker containers
+
+After you stopped every container in the project you may want to clean up:
+
+This command may do the job for you, but be careful it will erase all the stopped containers still existing in your host.
+
+```bash
+yes|docker container prune
+```
+
+If one of your containers did not stop properly you can find it using the command:
+```bash
+docker container list --all
+```
+
+Then stop them manually:
+```bash
+docker container stop <container name or id>
 ```
