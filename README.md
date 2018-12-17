@@ -10,17 +10,15 @@ The code was then hacked and adapted for specific learning and practical needs.
 
 A blockchain is a peer-to-peer network involving many servers discussing with each other. You can emulate this behaviour on your localhost using docker containers.
 
-For every peer we have a mongoDb instance acting as a database to store the blockchain. To emulate this we create **two docker containers for every node**: a container running a mongoDb daemon and a container run the golang code inside this project.
+For every peer we have a **mongoDb instance** acting as a database to store the blockchain. 
 
-No matter how much peers we want to emulate we have two docker images:
+To emulate this we create **two docker containers for every node**: 
+ * a container running a mongoDb daemon
+ * a container running the golang code inside this project
 
-An image we build using the Dockerfile inside this project:
-
-```bash
-docker build -t golang-blockchain .
-```
-
-The latest version of mongoDb: `mongo:latest`. 
+So we have two docker images:
+* an image we build using the Dockerfile inside this project
+* the latest version of mongoDb: `mongo:latest`. 
 
 See scripts below to get example scripts allowing you run as many containers as you want from these images. 
 
@@ -40,13 +38,21 @@ dep ensure
 
 ### Peer's scripts
 
+Build the Dockerfile for this project:
+
+```bash
+docker build -t golang-blockchain .
+```
+
 Run a docker container:
 
 ```bash
 docker run -it -v $PWD:/go/src/github.com/golang-blockchain golang-blockchain:latest
 ```
 
-Run the blockchain:
+Don't forget to run `dep ensure` after the first time you build the image.
+
+Run one peer of the blockchain:
 
 ```bash
 go run main.go -l 10000 -g <ip address of the mongoDb server>
@@ -57,7 +63,7 @@ When the first peer is running it will tell you the address of the IPFS node it 
 The other peers need to use that address to find it:
 
 ```bash
-go run main.go -l 10000 -g <ip address of the mongoDb server> -d /ip4/<ip address of the first peer>/tcp/10000/ipfs/<ipfs node>
+go run main.go -l 10000 -g <mongoDb server ip address> -d /ip4/<ip address of the first peer>/tcp/10000/ipfs/<ipfs node>
 ```  
 
 If you did not get the IPFS address you can get it with a curl request (the peer is listening on its 8080 port):
