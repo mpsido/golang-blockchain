@@ -3,12 +3,15 @@ package blockchain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang-blockchain/trustchain"
 )
 
 var mutex = &sync.Mutex{}
@@ -17,12 +20,12 @@ const difficulty = 1
 
 // Block represents each 'item' in the blockchain
 type Block struct {
-	Index     int
-	Timestamp string
-	BPM       int
-	Hash      string
-	PrevHash  string
-	Nonce     string
+	Index      int
+	Timestamp  string
+	InnerBlock trustchain.TrustBlock
+	Hash       string
+	PrevHash   string
+	Nonce      string
 }
 
 // Blockchain is a series of validated Blocks
@@ -35,7 +38,8 @@ func GenesisBlock() {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	genesisBlock := Block{0, "", 0, "", "", ""}
+	innerBlock := trustchain.NewBlock()
+	genesisBlock := Block{0, "", innerBlock, "", "", ""}
 	for i := 0; ; i++ {
 		hex := fmt.Sprintf("%x", i)
 		genesisBlock.Nonce = hex
@@ -140,7 +144,11 @@ func IsBlockValid(newBlock Block) bool {
 
 // calculateHash SHA256 hashing
 func calculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash + block.Nonce
+	innerBlockBytes, err := json.Marshal(block.InnerBlock)
+	if err != nil {
+		log.Panic("Could not Marshal innerBlock")
+	}
+	record := strconv.Itoa(block.Index) + block.Timestamp + string(innerBlockBytes) + block.PrevHash + block.Nonce
 	h := sha256.New()
 	_, _ = h.Write([]byte(record))
 	hashed := h.Sum(nil)
@@ -148,7 +156,7 @@ func calculateHash(block Block) string {
 }
 
 // GenerateBlock create a new block using previous block's hash
-func GenerateBlock(BPM int) Block {
+func GenerateBlock(innerBlock trustchain.TrustBlock) Block {
 	mutex.Lock()
 	defer mutex.Unlock()
 	var newBlock Block
@@ -157,7 +165,7 @@ func GenerateBlock(BPM int) Block {
 
 	newBlock.Index = Blockchain[len(Blockchain)-1].Index + 1
 	newBlock.Timestamp = t.String()
-	newBlock.BPM = BPM
+	newBlock.InnerBlock = innerBlock
 	newBlock.PrevHash = Blockchain[len(Blockchain)-1].Hash
 	newBlock.Hash = calculateHash(newBlock)
 	for i := 0; ; i++ {

@@ -12,13 +12,13 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang-blockchain/blockchain"
 	"github.com/golang-blockchain/database"
+	"github.com/golang-blockchain/trustchain"
 	"github.com/gorilla/mux"
 	golog "github.com/ipfs/go-log"
 	libp2p "github.com/libp2p/go-libp2p"
@@ -30,11 +30,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	gologging "github.com/whyrusleeping/go-logging"
 )
-
-// Message takes incoming JSON payload for writing heart rate
-type Message struct {
-	BPM int
-}
 
 var blockchainChannel = make(chan []blockchain.Block)
 var blockchainUpdate = make(chan int)
@@ -82,11 +77,11 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, string(bytes))
 }
 
-// takes JSON payload as an input for heart rate (BPM)
+// takes JSON payload
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	log.Println("Received block")
 	w.Header().Set("Content-Type", "application/json")
-	var m Message
+	var m trustchain.TrustBlock
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&m); err != nil {
@@ -95,9 +90,9 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	log.Println("Decoding received block")
+	log.Println("Decoding received block", m)
 
-	newBlock := blockchain.GenerateBlock(m.BPM)
+	newBlock := blockchain.GenerateBlock(m)
 
 	if blockchain.IsBlockValid(newBlock) {
 		blockchainChannel <- []blockchain.Block{newBlock}
@@ -239,14 +234,14 @@ func readConsole() {
 			log.Println(err)
 			continue
 		}
-
 		sendData = strings.Replace(sendData, "\n", "", -1)
-		bpm, err := strconv.Atoi(sendData)
+		innerBlock := &trustchain.TrustBlock{}
+		err = json.Unmarshal([]byte(sendData), innerBlock)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		newBlock := blockchain.GenerateBlock(bpm)
+		newBlock := blockchain.GenerateBlock(*innerBlock)
 
 		if blockchain.IsBlockValid(newBlock) {
 			blockchainChannel <- []blockchain.Block{newBlock}
