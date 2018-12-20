@@ -1,0 +1,8 @@
+version: '3'
+services:
+  peer:
+    build: .
+    volumes:
+      - ./:/go/src/github.com/golang-blockchain
+  mongo:
+    image: "mongo:latest"
