@@ -292,7 +292,7 @@ func main() {
 		ha.SetStreamHandler("/p2p/1.0.0", handleStream)
 
 		go pollBlockchainChannel()
-		go readConsole()
+		// go readConsole()
 		go run()
 		select {} // hang forever
 		/**** This is where the listener code ends ****/
@@ -338,7 +338,7 @@ func main() {
 
 		// Create a thread to read and write data.
 		go pollBlockchainChannel()
-		go readConsole()
+		// go readConsole()
 		go writeData(rw)
 		go readData(rw)
 		go run()
