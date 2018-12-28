@@ -32,7 +32,7 @@ import (
 )
 
 var blockchainChannel = make(chan []blockchain.Block)
-var blockchainUpdate = make(chan int)
+var blockchainUpdate = make([]chan int, 1)
 var mongoDbIp string
 var ipfsNode string
 
@@ -145,8 +145,7 @@ func makeBasicHost(listenPort int, secio bool, randseed int64) (host.Host, error
 	}
 
 	// Build host multiaddress
-	ipfsNode = basicHost.ID().Pretty()
-	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", ipfsNode))
+	hostAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", basicHost.ID().Pretty()))
 
 	// Now we can build a full multiaddress to reach this host
 	// by encapsulating both addresses:
@@ -170,7 +169,9 @@ func handleStream(s net.Stream) {
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
 	go readData(rw)
-	go writeData(rw)
+	updateChannel := make(chan int)
+	blockchainUpdate = append(blockchainUpdate, updateChannel)
+	go writeData(rw, updateChannel)
 
 	// stream 's' will stay open until you close it (or the other side closes it).
 }
@@ -181,6 +182,7 @@ func readData(rw *bufio.ReadWriter) {
 		if err != nil {
 			log.Fatal(err)
 		}
+		log.Println("Got a data from peer")
 
 		if str == "" {
 			continue
@@ -205,20 +207,29 @@ func pollBlockchainChannel() {
 
 			database.WriteBlockchain(mongoDbIp, newBlocks)
 
-			go func() { blockchainUpdate <- 1 }()
-			spew.Dump(newBlocks)
+			for i, update := range blockchainUpdate {
+				log.Println("Sending Update to peer ", i)
+				go func() {
+					update <- 1
+					log.Println("Done update to peer", i)
+					spew.Dump(newBlocks)
+				}()
+			}
 		}
 	}
 }
 
-func writeData(rw *bufio.ReadWriter) {
+func writeData(rw *bufio.ReadWriter, updateChannel chan int) {
 
-	for range blockchainUpdate {
+	log.Println("Starting write buffer with peer", rw)
+	for range updateChannel {
+		log.Println("Sending data to peer")
 		bytes, err := json.Marshal(blockchain.GetBlockchain())
 		if err != nil {
 			log.Fatal(err)
 		}
 
+		log.Println("Sending data Marshaled")
 		_, _ = rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
 		rw.Flush()
 	}
@@ -276,20 +287,21 @@ func main() {
 		mongoDbIp = *dbIp
 	}
 
+	blockchain.GenesisBlock()
+	database.WriteBlockchain(mongoDbIp, blockchain.GetBlockchain())
+
 	// Make a host that listens on the given multiaddress
 	ha, err := makeBasicHost(*listenF, *secio, *seed)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	blockchain.GenesisBlock()
-	database.WriteBlockchain(mongoDbIp, blockchain.GetBlockchain())
-
 	if *target == "" {
 		log.Println("listening for connections")
 		// Set a stream handler on host A. /p2p/1.0.0 is
 		// a user-defined protocol name.
 		ha.SetStreamHandler("/p2p/1.0.0", handleStream)
+		ipfsNode = ha.ID().Pretty()
 
 		go pollBlockchainChannel()
 		// go readConsole()
@@ -318,14 +330,15 @@ func main() {
 
 		// Decapsulate the /ipfs/<peerID> part from the target
 		// /ip4/<a.b.c.d>/ipfs/<peer> becomes /ip4/<a.b.c.d>
-		targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", peer.IDB58Encode(peerid)))
+		ipfsNode = peer.IDB58Encode(peerid)
+		targetPeerAddr, _ := ma.NewMultiaddr(fmt.Sprintf("/ipfs/%s", ipfsNode))
 		targetAddr := ipfsaddr.Decapsulate(targetPeerAddr)
 
 		// We have a peer ID and a targetAddr so we add it to the peerstore
 		// so LibP2P knows how to contact it
 		ha.Peerstore().AddAddr(peerid, targetAddr, pstore.PermanentAddrTTL)
 
-		log.Println("opening stream")
+		log.Println("opening stream", ipfsNode)
 		// make a new stream from host B to host A
 		// it should be handled on host A by the handler we set above because
 		// we use the same /p2p/1.0.0 protocol
@@ -339,7 +352,9 @@ func main() {
 		// Create a thread to read and write data.
 		go pollBlockchainChannel()
 		// go readConsole()
-		go writeData(rw)
+		updateChannel := make(chan int)
+		blockchainUpdate = append(blockchainUpdate, updateChannel)
+		go writeData(rw, updateChannel)
 		go readData(rw)
 		go run()
 

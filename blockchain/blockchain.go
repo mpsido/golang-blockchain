@@ -111,7 +111,7 @@ func AcceptBlockchainWinner(peersBlockchain []Block) (bool, []Block) {
 		}
 
 		if _, ok := blockMap[peersBlockchain[i].Hash]; ok {
-			log.Printf("Accepting from index %d\n", peersBlockchain[i].Index)
+			log.Printf("Accepting %d blocks from index %d\n", len(addedBlocks), peersBlockchain[i].Index)
 			break
 		}
 		addedBlocks = append([]Block{peersBlockchain[i]}, addedBlocks...)

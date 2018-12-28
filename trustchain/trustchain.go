@@ -1,17 +1,11 @@
 package trustchain
 
 type TrustBlock struct {
-	Comment   string
-	Score     uint8
-	Address   string
-	Signature string
+	BPM uint8
 }
 
 func NewBlock() TrustBlock {
 	return TrustBlock{
-		Comment:   "",
-		Score:     0,
-		Address:   "",
-		Signature: "",
+		BPM: 0,
 	}
 }

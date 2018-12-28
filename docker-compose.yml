@@ -17,3 +17,13 @@ services:
       - PEER=golangblockchain_peer1_1
       - MONGO=golangblockchain_mongo2_1
     command: ["./run_other_peer.sh"]
+  mongo3:
+    image: "mongo:latest"
+  peer3:
+    image: "golangblockchain_peer1:latest"
+    volumes:
+      - ./:/go/src/github.com/golang-blockchain
+    environment:
+      - PEER=golangblockchain_peer1_1
+      - MONGO=golangblockchain_mongo3_1
+    command: ["./run_other_peer.sh"]
