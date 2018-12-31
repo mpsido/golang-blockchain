@@ -13,9 +13,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/golang-blockchain/blockchain"
 	"github.com/golang-blockchain/database"
 	"github.com/golang-blockchain/trustchain"
@@ -32,7 +32,8 @@ import (
 )
 
 var blockchainChannel = make(chan []blockchain.Block)
-var blockchainUpdate = make([]chan int, 1)
+var peerUpdateChannelMap = make(map[int]*chan int)
+var peerIndex = 0
 var mongoDbIp string
 var ipfsNode string
 
@@ -60,11 +61,21 @@ func makeMuxRouter() http.Handler {
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
 	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
 	muxRouter.HandleFunc("/getIpfs", getIpfsNode).Methods("GET")
+	muxRouter.HandleFunc("/getNbBlocks", getNbBlocks).Methods("GET")
+	muxRouter.HandleFunc("/getNbPeers", getNbPeers).Methods("GET")
 	return muxRouter
 }
 
 func getIpfsNode(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, ipfsNode)
+}
+
+func getNbBlocks(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.WriteString(w, fmt.Sprintf("%d", len(blockchain.GetBlockchain())))
+}
+
+func getNbPeers(w http.ResponseWriter, r *http.Request) {
+	_, _ = io.WriteString(w, fmt.Sprintf("%d", peerIndex))
 }
 
 // write blockchain when we receive an http request
@@ -93,10 +104,11 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	log.Println("Decoding received block", m)
 
 	newBlock := blockchain.GenerateBlock(m)
-
-	if blockchain.IsBlockValid(newBlock) {
-		blockchainChannel <- []blockchain.Block{newBlock}
-	}
+	go func() {
+		if blockchain.IsBlockValid(newBlock) {
+			blockchainChannel <- []blockchain.Block{newBlock}
+		}
+	}()
 
 	respondWithJSON(w, r, http.StatusCreated, newBlock)
 
@@ -163,15 +175,16 @@ func makeBasicHost(listenPort int, secio bool, randseed int64) (host.Host, error
 
 func handleStream(s net.Stream) {
 
-	log.Println("Got a new stream!")
+	log.Println("Got a new stream!", s)
 
 	// Create a buffer stream for non blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
 	go readData(rw)
 	updateChannel := make(chan int)
-	blockchainUpdate = append(blockchainUpdate, updateChannel)
-	go writeData(rw, updateChannel)
+	peerUpdateChannelMap[peerIndex] = &updateChannel
+	peerIndex += 1
+	go writeData(rw, &updateChannel)
 
 	// stream 's' will stay open until you close it (or the other side closes it).
 }
@@ -207,31 +220,36 @@ func pollBlockchainChannel() {
 
 			database.WriteBlockchain(mongoDbIp, newBlocks)
 
-			for i, update := range blockchainUpdate {
-				log.Println("Sending Update to peer ", i)
-				go func() {
-					update <- 1
+			for i, update := range peerUpdateChannelMap {
+				go func(i int, update *chan int) {
+					log.Println("Sending Update to peer ", i, update)
+					*update <- 1
+					// spew.Dump(newBlocks)
 					log.Println("Done update to peer", i)
-					spew.Dump(newBlocks)
-				}()
+				}(i, update)
 			}
 		}
 	}
 }
 
-func writeData(rw *bufio.ReadWriter, updateChannel chan int) {
+func writeData(rw *bufio.ReadWriter, updateChannel *chan int) {
 
-	log.Println("Starting write buffer with peer", rw)
-	for range updateChannel {
+	log.Println("Starting write buffer with peer")
+	for range *updateChannel {
 		log.Println("Sending data to peer")
 		bytes, err := json.Marshal(blockchain.GetBlockchain())
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		log.Println("Sending data Marshaled")
-		_, _ = rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-		rw.Flush()
+		go func(bytes []byte) {
+			log.Println("Sending data Marshaled", *rw)
+			_, err := rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+			if err != nil {
+				log.Fatal(err)
+			}
+			rw.Flush()
+		}(bytes)
 	}
 }
 
@@ -303,9 +321,9 @@ func main() {
 		ha.SetStreamHandler("/p2p/1.0.0", handleStream)
 		ipfsNode = ha.ID().Pretty()
 
-		go pollBlockchainChannel()
 		// go readConsole()
 		go run()
+		go pollBlockchainChannel()
 		select {} // hang forever
 		/**** This is where the listener code ends ****/
 	} else {
@@ -348,15 +366,15 @@ func main() {
 		}
 		// Create a buffered stream so that read and writes are non blocking.
 		rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
 		// Create a thread to read and write data.
-		go pollBlockchainChannel()
 		// go readConsole()
 		updateChannel := make(chan int)
-		blockchainUpdate = append(blockchainUpdate, updateChannel)
-		go writeData(rw, updateChannel)
+		peerUpdateChannelMap[peerIndex] = &updateChannel
+		peerIndex += 1
+		go writeData(rw, &updateChannel)
 		go readData(rw)
 		go run()
+		go pollBlockchainChannel()
 
 		select {} // hang forever
 	}
