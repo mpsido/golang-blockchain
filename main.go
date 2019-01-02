@@ -348,14 +348,12 @@ func writeData(rw *bufio.ReadWriter, updateChannel *chan int) {
 			log.Fatal(err)
 		}
 
-		go func(bytes []byte) {
-			log.Println("Sending data Marshaled", *rw)
-			_, err := rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-			if err != nil {
-				log.Fatal(err)
-			}
-			rw.Flush()
-		}(bytes)
+		log.Println("Sending data Marshaled", *rw)
+		_, err = rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+		if err != nil {
+			log.Fatal(err)
+		}
+		rw.Flush()
 	}
 }
 
