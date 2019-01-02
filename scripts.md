@@ -105,16 +105,6 @@ docker network inspect bridge
 
 With this command you can get the IP address of every container connected to the "bridge" network (normally that is the network by default).
 
-Here is a few extra aliases you can use to get information from your peers, such as their ipfs address or the number of blocks on each node:
-
-```bash
-alias peer-addr='docker network inspect golangblockchain_default | grep -A 3 golangblockchain_peer'
-alias peer-ipaddr='peer-addr |grep IPv4Address |grep -oP "(\d+\.){3}\d+"'
-alias peer-ipfs='for i in `peer-ipaddr`; do curl $i:8080/getIpfs; echo; done'
-alias peer-nbblocks='for i in `peer-ipaddr`; do curl $i:8080/getNbBlocks; echo; done'
-alias peer-nbpeers='for i in `peer-ipaddr`; do curl $i:8080/getNbPeers; echo; done'
-```
-
 ### Clean out docker containers
 
 After you stopped every container in the project you may want to clean up:
@@ -133,4 +123,28 @@ docker container list --all
 Then stop them manually:
 ```bash
 docker container stop <container name or id>
+```
+
+### If you are using the docker-compose script:
+
+You can run the docker-compose script like this:
+
+```bash
+docker-compose up
+```
+
+And stop it like this:
+
+```bash
+docker-compose down
+```
+
+Here is a few extra aliases you can use to get information from your peers, such as their ipfs address or the number of blocks on each node:
+
+```bash
+alias peer-addr='docker network inspect golangblockchain_default | grep -A 3 golangblockchain_peer'
+alias peer-ipaddr='peer-addr |grep IPv4Address |grep -oP "(\d+\.){3}\d+"'
+alias peer-ipfs='for i in `peer-ipaddr`; do curl $i:8080/getIpfs; echo; done'
+alias peer-nbblocks='for i in `peer-ipaddr`; do curl $i:8080/getNbBlocks; echo; done'
+alias peer-nbpeers='for i in `peer-ipaddr`; do curl $i:8080/getNbPeers; echo; done'
 ```
