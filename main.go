@@ -88,32 +88,6 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, string(bytes))
 }
 
-// takes JSON payload
-func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received block")
-	w.Header().Set("Content-Type", "application/json")
-	var m trustchain.TrustBlock
-
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&m); err != nil {
-		log.Println("Wrong request")
-		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
-		return
-	}
-	defer r.Body.Close()
-	log.Println("Decoding received block", m)
-
-	newBlock := blockchain.GenerateBlock(m)
-	go func() {
-		if blockchain.IsBlockValid(newBlock) {
-			blockchainChannel <- []blockchain.Block{newBlock}
-		}
-	}()
-
-	respondWithJSON(w, r, http.StatusCreated, newBlock)
-
-}
-
 func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
 	response, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -171,114 +145,6 @@ func makeBasicHost(listenPort int, secio bool, randseed int64) (host.Host, error
 	}
 
 	return basicHost, nil
-}
-
-func handleStream(s net.Stream) {
-
-	log.Println("Got a new stream!", s)
-
-	// Create a buffer stream for non blocking read and write.
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	go readData(rw)
-	updateChannel := make(chan int)
-	peerUpdateChannelMap[peerIndex] = &updateChannel
-	peerIndex += 1
-	go writeData(rw, &updateChannel)
-
-	// stream 's' will stay open until you close it (or the other side closes it).
-}
-
-func readData(rw *bufio.ReadWriter) {
-	for {
-		str, err := rw.ReadString('\n')
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("Got a data from peer")
-
-		if str == "" {
-			continue
-		}
-		if str != "\n" {
-			chain := make([]blockchain.Block, 0)
-			if err := json.Unmarshal([]byte(str), &chain); err != nil {
-				log.Fatal(err)
-			} else {
-				blockchainChannel <- chain
-			}
-		}
-	}
-}
-
-func pollBlockchainChannel() {
-	var newBlockchain []blockchain.Block
-	for newBlockchain = range blockchainChannel {
-		log.Printf("Blockchain update")
-		if bAccept, newBlocks := blockchain.AcceptBlockchainWinner(newBlockchain); bAccept {
-			log.Printf("Blockchain update accepted")
-
-			database.WriteBlockchain(mongoDbIp, newBlocks)
-
-			for i, update := range peerUpdateChannelMap {
-				go func(i int, update *chan int) {
-					log.Println("Sending Update to peer ", i, update)
-					*update <- 1
-					// spew.Dump(newBlocks)
-					log.Println("Done update to peer", i)
-				}(i, update)
-			}
-		}
-	}
-}
-
-func writeData(rw *bufio.ReadWriter, updateChannel *chan int) {
-
-	log.Println("Starting write buffer with peer")
-	for range *updateChannel {
-		log.Println("Sending data to peer")
-		bytes, err := json.Marshal(blockchain.GetBlockchain())
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		go func(bytes []byte) {
-			log.Println("Sending data Marshaled", *rw)
-			_, err := rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
-			if err != nil {
-				log.Fatal(err)
-			}
-			rw.Flush()
-		}(bytes)
-	}
-}
-
-func readConsole() {
-	stdReader := bufio.NewReader(os.Stdin)
-
-	for {
-		fmt.Print("> ")
-		sendData, err := stdReader.ReadString('\n')
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		sendData = strings.Replace(sendData, "\n", "", -1)
-		innerBlock := &trustchain.TrustBlock{}
-		err = json.Unmarshal([]byte(sendData), innerBlock)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		newBlock := blockchain.GenerateBlock(*innerBlock)
-
-		if blockchain.IsBlockValid(newBlock) {
-			blockchainChannel <- []blockchain.Block{newBlock}
-		} else {
-			log.Fatal("Invalid block")
-		}
-	}
-
 }
 
 func main() {
@@ -377,5 +243,139 @@ func main() {
 		go pollBlockchainChannel()
 
 		select {} // hang forever
+	}
+}
+
+func handleStream(s net.Stream) {
+
+	log.Println("Got a new stream!", s)
+
+	// Create a buffer stream for non blocking read and write.
+	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+
+	go readData(rw)
+	updateChannel := make(chan int)
+	peerUpdateChannelMap[peerIndex] = &updateChannel
+	peerIndex += 1
+	go writeData(rw, &updateChannel)
+
+	// stream 's' will stay open until you close it (or the other side closes it).
+}
+
+// takes JSON payload
+func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+	log.Println("Received block")
+	w.Header().Set("Content-Type", "application/json")
+	var m trustchain.TrustBlock
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&m); err != nil {
+		log.Println("Wrong request")
+		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
+		return
+	}
+	defer r.Body.Close()
+	log.Println("Decoding received block", m)
+
+	newBlock := blockchain.GenerateBlock(m)
+	go func() {
+		if blockchain.IsBlockValid(newBlock) {
+			blockchainChannel <- []blockchain.Block{newBlock}
+		}
+	}()
+
+	respondWithJSON(w, r, http.StatusCreated, newBlock)
+
+}
+
+func readConsole() {
+	stdReader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Print("> ")
+		sendData, err := stdReader.ReadString('\n')
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		sendData = strings.Replace(sendData, "\n", "", -1)
+		innerBlock := &trustchain.TrustBlock{}
+		err = json.Unmarshal([]byte(sendData), innerBlock)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		newBlock := blockchain.GenerateBlock(*innerBlock)
+
+		if blockchain.IsBlockValid(newBlock) {
+			blockchainChannel <- []blockchain.Block{newBlock}
+		} else {
+			log.Fatal("Invalid block")
+		}
+	}
+
+}
+
+func readData(rw *bufio.ReadWriter) {
+	for {
+		str, err := rw.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println("Got a data from peer")
+
+		if str == "" {
+			continue
+		}
+		if str != "\n" {
+			chain := make([]blockchain.Block, 0)
+			if err := json.Unmarshal([]byte(str), &chain); err != nil {
+				log.Fatal(err)
+			} else {
+				blockchainChannel <- chain
+			}
+		}
+	}
+}
+
+func writeData(rw *bufio.ReadWriter, updateChannel *chan int) {
+
+	log.Println("Starting write buffer with peer")
+	for range *updateChannel {
+		log.Println("Sending data to peer")
+		bytes, err := json.Marshal(blockchain.GetBlockchain())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		go func(bytes []byte) {
+			log.Println("Sending data Marshaled", *rw)
+			_, err := rw.WriteString(fmt.Sprintf("%s\n", string(bytes)))
+			if err != nil {
+				log.Fatal(err)
+			}
+			rw.Flush()
+		}(bytes)
+	}
+}
+
+func pollBlockchainChannel() {
+	var newBlockchain []blockchain.Block
+	for newBlockchain = range blockchainChannel {
+		log.Printf("Blockchain update")
+		if bAccept, newBlocks := blockchain.AcceptBlockchainWinner(newBlockchain); bAccept {
+			log.Printf("Blockchain update accepted")
+
+			database.WriteBlockchain(mongoDbIp, newBlocks)
+
+			for i, update := range peerUpdateChannelMap {
+				go func(i int, update *chan int) {
+					log.Println("Sending Update to peer ", i, update)
+					*update <- 1
+					// spew.Dump(newBlocks)
+					log.Println("Done update to peer", i)
+				}(i, update)
+			}
+		}
 	}
 }
