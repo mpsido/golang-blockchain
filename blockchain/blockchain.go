@@ -15,14 +15,15 @@ import (
 )
 
 var mutex = &sync.Mutex{}
+var transactionPoolMutex = &sync.Mutex{}
 
-const difficulty = 1
+const difficulty = 5
 
 // Block represents each 'item' in the blockchain
 type Block struct {
 	Index      int
 	Timestamp  string
-	InnerBlock trustchain.TrustBlock
+	InnerBlock []trustchain.TrustBlock
 	Hash       string
 	PrevHash   string
 	Nonce      string
@@ -32,6 +33,7 @@ type Block struct {
 var Blockchain []Block
 var blockMap map[string]Block
 var genesisBlockHash string
+var transactionPool []trustchain.TrustBlock
 
 // GenesisBlock init blockchain
 func GenesisBlock() {
@@ -39,12 +41,12 @@ func GenesisBlock() {
 	defer mutex.Unlock()
 
 	innerBlock := trustchain.NewBlock()
-	genesisBlock := Block{0, "", innerBlock, "", "", ""}
+	genesisBlock := Block{0, "", []trustchain.TrustBlock{innerBlock}, "", "", ""}
 	for i := 0; ; i++ {
 		hex := fmt.Sprintf("%x", i)
 		genesisBlock.Nonce = hex
 		if !isHashValid(calculateHash(genesisBlock), difficulty) {
-			fmt.Println(calculateHash(genesisBlock), " do more work!")
+			// fmt.Println(calculateHash(genesisBlock), " do more work!")
 			continue
 		} else {
 			fmt.Println(calculateHash(genesisBlock), " work done!")
@@ -67,6 +69,10 @@ func GetBlockchain() []Block {
 }
 
 func appendBlocks(addedBlocks []Block) bool {
+	if len(addedBlocks) == 0 {
+		log.Println("no update to accept")
+		return false
+	}
 	if !isBlockValid(addedBlocks[0], Blockchain[addedBlocks[0].Index-1]) {
 		log.Println("Valid chain but it does not continue to existing chain")
 		return false
@@ -155,8 +161,26 @@ func calculateHash(block Block) string {
 	return hex.EncodeToString(hashed)
 }
 
+type update_callback func(block Block)
+
+// PushTransaction
+func PushTransaction(transaction trustchain.TrustBlock) {
+	transactionPoolMutex.Lock()
+	defer transactionPoolMutex.Unlock()
+
+	transactionPool = append(transactionPool, transaction)
+}
+
+// StartBlockchainLoop
+func StartBlockchainLoop(callback update_callback) {
+	GenesisBlock()
+	for {
+		callback(GenerateBlock())
+	}
+}
+
 // GenerateBlock create a new block using previous block's hash
-func GenerateBlock(innerBlock trustchain.TrustBlock) Block {
+func GenerateBlock() Block {
 	mutex.Lock()
 	defer mutex.Unlock()
 	var newBlock Block
@@ -165,14 +189,17 @@ func GenerateBlock(innerBlock trustchain.TrustBlock) Block {
 
 	newBlock.Index = Blockchain[len(Blockchain)-1].Index + 1
 	newBlock.Timestamp = t.String()
-	newBlock.InnerBlock = innerBlock
+	transactionPoolMutex.Lock()
+	newBlock.InnerBlock = transactionPool
+	transactionPool = transactionPool[:0]
+	transactionPoolMutex.Unlock()
 	newBlock.PrevHash = Blockchain[len(Blockchain)-1].Hash
 	newBlock.Hash = calculateHash(newBlock)
 	for i := 0; ; i++ {
 		hex := fmt.Sprintf("%x", i)
 		newBlock.Nonce = hex
 		if !isHashValid(calculateHash(newBlock), difficulty) {
-			fmt.Println(calculateHash(newBlock), " do more work!")
+			// fmt.Println(calculateHash(newBlock), " do more work!")
 			continue
 		} else {
 			fmt.Println(calculateHash(newBlock), " work done!")

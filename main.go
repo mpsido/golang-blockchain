@@ -71,7 +71,7 @@ func getIpfsNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func getNbBlocks(w http.ResponseWriter, r *http.Request) {
-	_, _ = io.WriteString(w, fmt.Sprintf("%d", len(blockchain.GetBlockchain())))
+	_, _ = io.WriteString(w, fmt.Sprintf("%d", len(database.ReadBlockchain(mongoDbIp))))
 }
 
 func getNbPeers(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,7 @@ func getNbPeers(w http.ResponseWriter, r *http.Request) {
 
 // write blockchain when we receive an http request
 func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
-	bytes, err := json.MarshalIndent(blockchain.GetBlockchain(), "", "  ")
+	bytes, err := json.MarshalIndent(database.ReadBlockchain(mongoDbIp), "", "  ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -171,8 +171,12 @@ func main() {
 		mongoDbIp = *dbIp
 	}
 
-	blockchain.GenesisBlock()
-	database.WriteBlockchain(mongoDbIp, blockchain.GetBlockchain())
+	go blockchain.StartBlockchainLoop(func(newBlock blockchain.Block) {
+		if blockchain.IsBlockValid(newBlock) {
+			blockchainChannel <- []blockchain.Block{newBlock}
+		}
+	})
+	database.WriteBlockchain(mongoDbIp, database.ReadBlockchain(mongoDbIp))
 
 	// Make a host that listens on the given multiaddress
 	ha, err := makeBasicHost(*listenF, *secio, *seed)
@@ -273,14 +277,9 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	log.Println("Decoding received block", m)
 
-	newBlock := blockchain.GenerateBlock(m)
-	go func() {
-		if blockchain.IsBlockValid(newBlock) {
-			blockchainChannel <- []blockchain.Block{newBlock}
-		}
-	}()
+	blockchain.PushTransaction(m)
 
-	respondWithJSON(w, r, http.StatusCreated, newBlock)
+	respondWithJSON(w, r, http.StatusCreated, m)
 
 }
 
@@ -301,13 +300,7 @@ func readConsole() {
 			log.Println(err)
 			continue
 		}
-		newBlock := blockchain.GenerateBlock(*innerBlock)
-
-		if blockchain.IsBlockValid(newBlock) {
-			blockchainChannel <- []blockchain.Block{newBlock}
-		} else {
-			log.Fatal("Invalid block")
-		}
+		blockchain.PushTransaction(*innerBlock)
 	}
 
 }
@@ -334,9 +327,9 @@ func readData(rw *bufio.ReadWriter) {
 	}
 }
 
-func writeData(rw *bufio.ReadWriter) {
-	log.Println("Sending data to peer")
-	bytes, err := json.Marshal(blockchain.GetBlockchain())
+func writeData(rw *bufio.ReadWriter, newBlocks []blockchain.Block) {
+	log.Println("Sending data to peer", len(newBlocks))
+	bytes, err := json.Marshal(newBlocks)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -360,10 +353,10 @@ func pollBlockchainChannel() {
 
 			for i, update := range peerUpdateChannelMap {
 				log.Println("Sending Update to peer ", i, update)
-				go func(i int, update *bufio.ReadWriter) {
-					writeData(update)
+				go func(i int, update *bufio.ReadWriter, newBlocks []blockchain.Block) {
+					writeData(update, newBlocks)
 					log.Println("Done update to peer", i)
-				}(i, update)
+				}(i, update, newBlocks)
 			}
 		}
 	}
