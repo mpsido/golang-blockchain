@@ -11,6 +11,9 @@ services:
     image: "mongo:latest"
   peer2:
     image: "golangblockchain_peer1:latest"
+    ports:
+      - "10000:10000"
+      - "8080:8080"
     volumes:
       - ./:/go/src/github.com/golang-blockchain
     environment:
