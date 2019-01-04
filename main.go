@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"time"
 
@@ -33,6 +34,7 @@ import (
 
 var blockchainChannel = make(chan []blockchain.Block)
 var peerUpdateChannelMap = make(map[int]*bufio.ReadWriter)
+var peerUpdateMutexMap = make(map[int]*sync.Mutex)
 var peerIndex = 0
 var mongoDbIp string
 var ipfsNode string
@@ -239,8 +241,10 @@ func main() {
 		// Create a thread to read and write data.
 		// go readConsole()
 		peerUpdateChannelMap[peerIndex] = rw
+		mutex := &sync.Mutex{}
+		peerUpdateMutexMap[peerIndex] = mutex
 		peerIndex += 1
-		go readData(rw)
+		go readData(rw, mutex)
 		go run()
 		go pollBlockchainChannel()
 
@@ -255,8 +259,10 @@ func handleStream(s net.Stream) {
 	// Create a buffer stream for non blocking read and write.
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
-	go readData(rw)
+	mutex := &sync.Mutex{}
+	go readData(rw, mutex)
 	peerUpdateChannelMap[peerIndex] = rw
+	peerUpdateMutexMap[peerIndex] = mutex
 	peerIndex += 1
 
 	// stream 's' will stay open until you close it (or the other side closes it).
@@ -305,12 +311,14 @@ func readConsole() {
 
 }
 
-func readData(rw *bufio.ReadWriter) {
+func readData(rw *bufio.ReadWriter, mutex *sync.Mutex) {
 	for {
+		mutex.Lock()
 		str, err := rw.ReadString('\n')
 		if err != nil {
 			log.Fatal(err)
 		}
+		mutex.Unlock()
 		log.Println("Got a data from peer")
 
 		if str == "" {
@@ -321,6 +329,7 @@ func readData(rw *bufio.ReadWriter) {
 			if err := json.Unmarshal([]byte(str), &chain); err != nil {
 				log.Fatal(err)
 			} else {
+				log.Println("Updating blockchain with nb new blocks: ", len(chain))
 				blockchainChannel <- chain
 			}
 		}
@@ -354,7 +363,9 @@ func pollBlockchainChannel() {
 			for i, update := range peerUpdateChannelMap {
 				log.Println("Sending Update to peer ", i, update)
 				go func(i int, update *bufio.ReadWriter, newBlocks []blockchain.Block) {
+					peerUpdateMutexMap[i].Lock()
 					writeData(update, newBlocks)
+					peerUpdateMutexMap[i].Unlock()
 					log.Println("Done update to peer", i)
 				}(i, update, newBlocks)
 			}

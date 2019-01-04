@@ -73,6 +73,7 @@ func appendBlocks(addedBlocks []Block) bool {
 		log.Println("no update to accept")
 		return false
 	}
+	log.Println("Adding ", len(addedBlocks), " blocks with index", addedBlocks[0].Index, " Blockchain len: ", len(Blockchain))
 	if !isBlockValid(addedBlocks[0], Blockchain[addedBlocks[0].Index-1]) {
 		log.Println("Valid chain but it does not continue to existing chain")
 		return false
