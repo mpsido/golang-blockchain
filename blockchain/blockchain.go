@@ -167,16 +167,18 @@ func GenerateBlock(innerBlock trustchain.TrustBlock) Block {
 	newBlock.Timestamp = t.String()
 	newBlock.InnerBlock = innerBlock
 	newBlock.PrevHash = Blockchain[len(Blockchain)-1].Hash
-	newBlock.Hash = calculateHash(newBlock)
+	// newBlock.Hash = calculateHash(newBlock)
+	var hash string
 	for i := 0; ; i++ {
 		hex := fmt.Sprintf("%x", i)
 		newBlock.Nonce = hex
-		if !isHashValid(calculateHash(newBlock), difficulty) {
-			fmt.Println(calculateHash(newBlock), " do more work!")
+		hash = calculateHash(newBlock)
+		if !isHashValid(hash, difficulty) {
+			// fmt.Println(calculateHash(newBlock), " do more work!")
 			continue
 		} else {
-			fmt.Println(calculateHash(newBlock), " work done!")
-			newBlock.Hash = calculateHash(newBlock)
+			fmt.Println(hash, " work done!")
+			newBlock.Hash = hash
 			break
 		}
 
