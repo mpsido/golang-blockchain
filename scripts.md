@@ -38,7 +38,6 @@ If you did not get the IPFS address you can get it with a curl request (the peer
 curl <IP address of the peer>:8080/getIpfs ; echo
 ```
 
-
 ### MongoDb scripts
 
 Run the mongoDb server in a docker container:
@@ -147,4 +146,10 @@ alias peer-ipaddr='peer-addr |grep IPv4Address |grep -oP "(\d+\.){3}\d+"'
 alias peer-ipfs='for i in `peer-ipaddr`; do curl $i:8080/getIpfs; echo; done'
 alias peer-nbblocks='for i in `peer-ipaddr`; do curl $i:8080/getNbBlocks; echo; done'
 alias peer-nbpeers='for i in `peer-ipaddr`; do curl $i:8080/getNbPeers; echo; done'
+```
+
+## Publish static container
+
+```bash
+docker build -t golangblockchain -f Dockerfile.static  .
 ```

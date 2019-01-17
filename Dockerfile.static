@@ -1,0 +1,4 @@
+FROM golang-blockchain:latest
+
+COPY ./ /go/src/github.com/golang-blockchain/
+RUN dep ensure -v
