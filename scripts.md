@@ -148,8 +148,13 @@ alias peer-nbblocks='for i in `peer-ipaddr`; do curl $i:8080/getNbBlocks; echo; 
 alias peer-nbpeers='for i in `peer-ipaddr`; do curl $i:8080/getNbPeers; echo; done'
 ```
 
-## Publish static container
+## With static images
 
 ```bash
 docker build -t golangblockchain -f Dockerfile.static  .
+```
+
+Run docker-compose-static.yml file
+```bash
+docker-compose -f docker-compose-static.yml up
 ```

@@ -1,0 +1,32 @@
+version: '3'
+services:
+  mongo1:
+    image: "mongo:latest"
+  peer1:
+    image: golangblockchain
+    volumes:
+      - ./:/go/src/github.com/golang-blockchain
+    command: ["go", "run", "main.go", "-l", "10000", "-g", "golangblockchain_mongo1_1"]
+  mongo2:
+    image: "mongo:latest"
+  peer2:
+    image: "golangblockchain:latest"
+    ports:
+      - "10000:10000"
+      - "8080:8080"
+    volumes:
+      - ./:/go/src/github.com/golang-blockchain
+    environment:
+      - PEER=golangblockchain_peer1_1
+      - MONGO=golangblockchain_mongo2_1
+    command: ["./run_other_peer.sh"]
+  mongo3:
+    image: "mongo:latest"
+  peer3:
+    image: "golangblockchain:latest"
+    volumes:
+      - ./:/go/src/github.com/golang-blockchain
+    environment:
+      - PEER=golangblockchain_peer1_1
+      - MONGO=golangblockchain_mongo3_1
+    command: ["./run_other_peer.sh"]
